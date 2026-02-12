@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiosk - Clock In/Out</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #4A90E2, #FF69B4);
+            min-height: 100vh; padding: 30px;
+        }
+        .kiosk-container {
+            background: white; border-radius: 20px; padding: 50px;
+            max-width: 800px; margin: 0 auto; box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        .kiosk-title { font-size: 56px; font-weight: 700; color: #4A90E2; margin-bottom: 20px; }
+        .kiosk-subtitle { font-size: 24px; color: #666; margin-bottom: 40px; }
+        .time-display { font-size: 28px; font-weight: 700; color: #4A90E2; margin-bottom: 30px; }
+        .form-control {
+            width: 100%; padding: 20px; font-size: 24px;
+            border: 3px solid #ddd; border-radius: 10px; margin-bottom: 30px;
+        }
+        .btn {
+            padding: 25px 50px; font-size: 28px; font-weight: 700;
+            border: none; border-radius: 15px; cursor: pointer;
+            transition: all 0.3s; margin: 15px; min-width: 300px;
+        }
+        .btn:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .btn-success { background: #48bb78; color: white; }
+        .btn-danger { background: #f56565; color: white; }
+        .btn-warning { background: #f39c12; color: white; }
+        .btn-primary { background: #4A90E2; color: white; }
+        .hidden { display: none !important; }
+        .alert {
+            padding: 25px; border-radius: 15px; margin: 30px 0;
+            font-size: 24px; font-weight: 600;
+        }
+        .alert-success { background: #d4edda; color: #155724; border: 4px solid #48bb78; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 4px solid #f56565; }
+        .alert-warning { background: #fff3cd; color: #856404; border: 4px solid #f39c12; }
+        video, #capturedPhoto {
+            border-radius: 15px; border: 5px solid #4A90E2;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            max-width: 100%; width: 100%; max-width: 600px;
+            margin: 20px auto; display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="kiosk-container">
+        <div class="kiosk-title">Welcome! 👋</div>
+        <div class="kiosk-subtitle">Clock In or Out</div>
+        <div class="time-display" id="timeDisplay"></div>
+        
+        <select class="form-control" id="staffSelect" onchange="staffSelected()">
+            <option value="">👤 Select your name...</option>
+        </select>
+
+        <div id="photoSection" class="hidden">
+            <p style="font-size: 22px; margin: 20px 0; color: #666;">📸 Take your photo to verify</p>
+            
+            <video id="video" autoplay playsinline style="display: none;"></video>
+            <canvas id="canvas" style="display: none;"></canvas>
+            <img id="capturedPhoto" style="display: none;">
+            
+            <div style="margin-top: 30px;">
+                <button class="btn btn-primary" id="startCameraBtn" onclick="startCamera()">📷 Start Camera</button>
+                <button class="btn btn-success hidden" id="captureBtn" onclick="capturePhoto()">📸 Take Photo</button>
+                <button class="btn btn-warning hidden" id="retakeBtn" onclick="retakePhoto()">🔄 Retake</button>
+            </div>
+        </div>
+
+        <div id="actionButtons" class="hidden" style="margin-top: 40px;">
+            <button class="btn btn-success" onclick="clockIn()">✅ CLOCK IN</button>
+            <button class="btn btn-danger" onclick="clockOut()">⏹️ CLOCK OUT</button>
+            <button class="btn btn-warning" onclick="toggleBreak()">☕ BREAK</button>
+        </div>
+
+        <div id="message"></div>
+    </div>
+
+    <script>
+        let staff = [];
+        let clockRecords = [];
+        let breakRecords = [];
+        let settings = {
+            nurseryLat: 53.2574,
+            nurseryLng: -2.1258,
+            geoRadius: 50,
+            openingTime: '07:00',
+            closingTime: '18:30'
+        };
+        let currentStaff = null;
+        let photoData = null;
+        let videoStream = null;
+        let userLocation = null;
+
+        function init() {
+            loadData();
+            requestLocation();
+            updateTime();
+            setInterval(updateTime, 1000);
+            populateStaff();
+        }
+
+        function updateTime() {
+            document.getElementById('timeDisplay').textContent = new Date().toLocaleString('en-GB', {
+                weekday: 'long', day: 'numeric', month: 'long',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+        }
+
+        function loadData() {
+            const saved = localStorage.getItem('nurseryCompleteSystem');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    staff = data.staff || [];
+                    clockRecords = data.clockRecords || [];
+                    breakRecords = data.breakRecords || [];
+                    settings = {...settings, ...(data.settings || {})};
+                } catch (e) {}
+            }
+        }
+
+        function saveData() {
+            const saved = localStorage.getItem('nurseryCompleteSystem');
+            let data = saved ? JSON.parse(saved) : {};
+            data.clockRecords = clockRecords;
+            data.breakRecords = breakRecords;
+            data.lastSaved = new Date().toISOString();
+            localStorage.setItem('nurseryCompleteSystem', JSON.stringify(data));
+        }
+
+        function requestLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        console.log('✅ Location obtained:', userLocation);
+                    },
+                    error => {
+                        console.log('⚠️ Location not available - geo-fencing disabled');
+                        showMessage('warning', '⚠️ LOCATION SERVICES DISABLED\n\nGeo-fencing not active. Please enable location services for full security.');
+                    }
+                );
+            }
+        }
+
+        function checkLocationProximity() {
+            if (!userLocation) {
+                console.log('⚠️ No location - allowing clock in');
+                return { allowed: true, distance: 0 };
+            }
+            
+            const R = 6371000; // Earth radius in meters
+            const dLat = (settings.nurseryLat - userLocation.lat) * Math.PI / 180;
+            const dLon = (settings.nurseryLng - userLocation.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(userLocation.lat * Math.PI / 180) * Math.cos(settings.nurseryLat * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c;
+            
+            const allowed = distance <= settings.geoRadius;
+            console.log(`📍 Distance check: ${Math.round(distance)}m (limit: ${settings.geoRadius}m) - ${allowed ? 'ALLOWED' : 'BLOCKED'}`);
+            
+            return { allowed: allowed, distance: Math.round(distance) };
+        }
+
+        function checkOpeningHours() {
+            const now = new Date();
+            const currentTime = now.toTimeString().slice(0, 5);
+            const allowed = currentTime >= settings.openingTime && currentTime <= settings.closingTime;
+            
+            console.log(`🕐 Time check: ${currentTime} (open: ${settings.openingTime}-${settings.closingTime}) - ${allowed ? 'ALLOWED' : 'BLOCKED'}`);
+            
+            return { allowed: allowed, currentTime: currentTime };
+        }
+
+        function populateStaff() {
+            staff.sort((a, b) => a.name.localeCompare(b.name));
+            const select = document.getElementById('staffSelect');
+            select.innerHTML = '<option value="">👤 Select your name...</option>' +
+                staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        }
+
+        function staffSelected() {
+            const staffId = parseInt(document.getElementById('staffSelect').value);
+            if (staffId) {
+                currentStaff = staff.find(s => s.id === staffId);
+                document.getElementById('photoSection').classList.remove('hidden');
+                document.getElementById('actionButtons').classList.add('hidden');
+                document.getElementById('message').innerHTML = '';
+                resetPhoto();
+            } else {
+                currentStaff = null;
+                document.getElementById('photoSection').classList.add('hidden');
+                document.getElementById('actionButtons').classList.add('hidden');
+            }
+        }
+
+        async function startCamera() {
+            try {
+                const constraints = {
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                };
+                
+                videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                const video = document.getElementById('video');
+                video.srcObject = videoStream;
+                await video.play();
+                video.style.display = 'block';
+                
+                document.getElementById('startCameraBtn').classList.add('hidden');
+                document.getElementById('captureBtn').classList.remove('hidden');
+                document.getElementById('capturedPhoto').style.display = 'none';
+                
+                console.log('✅ Camera started');
+            } catch (error) {
+                console.error('Camera error:', error);
+                showMessage('error', '❌ Camera Error\n\nPlease allow camera access.');
+            }
+        }
+
+        function capturePhoto() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            photoData = canvas.toDataURL('image/jpeg', 0.8);
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            video.style.display = 'none';
+            
+            const photoImg = document.getElementById('capturedPhoto');
+            photoImg.src = photoData;
+            photoImg.style.display = 'block';
+            
+            document.getElementById('captureBtn').classList.add('hidden');
+            document.getElementById('retakeBtn').classList.remove('hidden');
+            document.getElementById('actionButtons').classList.remove('hidden');
+            
+            showMessage('success', '✅ Photo Captured!\n\nChoose your action below');
+        }
+
+        function retakePhoto() {
+            resetPhoto();
+            startCamera();
+        }
+
+        function resetPhoto() {
+            photoData = null;
+            document.getElementById('video').style.display = 'none';
+            document.getElementById('capturedPhoto').style.display = 'none';
+            document.getElementById('startCameraBtn').classList.remove('hidden');
+            document.getElementById('captureBtn').classList.add('hidden');
+            document.getElementById('retakeBtn').classList.add('hidden');
+            document.getElementById('actionButtons').classList.add('hidden');
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+        }
+
+        function clockIn() {
+            if (!currentStaff || !photoData) {
+                showMessage('error', '❌ Take a photo first!');
+                return;
+            }
+
+            // CHECK OPENING HOURS
+            const timeCheck = checkOpeningHours();
+            if (!timeCheck.allowed) {
+                showMessage('error', `❌ NURSERY IS CLOSED!\n\nCurrent time: ${timeCheck.currentTime}\nOpening hours: ${settings.openingTime} - ${settings.closingTime}\n\nYou cannot clock in outside nursery hours.`);
+                setTimeout(resetKiosk, 6000);
+                return;
+            }
+
+            // CHECK GEO-FENCING
+            const locationCheck = checkLocationProximity();
+            if (!locationCheck.allowed && userLocation) {
+                showMessage('error', `❌ TOO FAR FROM NURSERY!\n\nYou are ${locationCheck.distance} meters away\nYou must be within ${settings.geoRadius} meters\n\nPlease come to the nursery to clock in.`);
+                setTimeout(resetKiosk, 6000);
+                return;
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+            const alreadyIn = clockRecords.find(r => 
+                r.staffId === currentStaff.id && 
+                r.clockIn.startsWith(today) && 
+                !r.clockOut
+            );
+
+            if (alreadyIn) {
+                showMessage('error', '❌ Already Clocked In!\n\nAt: ' + 
+                    new Date(alreadyIn.clockIn).toLocaleTimeString('en-GB'));
+                setTimeout(resetKiosk, 4000);
+                return;
+            }
+
+            const now = new Date().toISOString();
+            clockRecords.push({
+                id: Date.now(),
+                staffId: currentStaff.id,
+                staffName: currentStaff.name,
+                clockIn: now,
+                clockOut: null,
+                photo: photoData,
+                location: userLocation,
+                totalBreakMinutes: 0,
+                method: 'kiosk'
+            });
+
+            saveData();
+            showMessage('success', `✅ CLOCKED IN!\n\nWelcome ${currentStaff.name}\n${new Date(now).toLocaleTimeString('en-GB')}`);
+            setTimeout(resetKiosk, 3500);
+        }
+
+        function clockOut() {
+            if (!currentStaff || !photoData) {
+                showMessage('error', '❌ Take a photo first!');
+                return;
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+            const activeRecord = clockRecords.find(r => 
+                r.staffId === currentStaff.id && 
+                r.clockIn.startsWith(today) && 
+                !r.clockOut
+            );
+
+            if (!activeRecord) {
+                showMessage('error', '❌ No Clock-In Found!\n\nClock in first');
+                setTimeout(resetKiosk, 3000);
+                return;
+            }
+
+            const now = new Date();
+            activeRecord.clockOut = now.toISOString();
+            activeRecord.clockOutPhoto = photoData;
+            
+            const workHours = (now - new Date(activeRecord.clockIn)) / (1000 * 60 * 60);
+            const breakHours = (activeRecord.totalBreakMinutes || 0) / 60;
+            const actualHours = (workHours - breakHours).toFixed(1);
+            
+            saveData();
+            showMessage('success', `✅ CLOCKED OUT!\n\nGoodbye ${currentStaff.name}\n${actualHours} hours worked`);
+            setTimeout(resetKiosk, 3500);
+        }
+
+        function toggleBreak() {
+            if (!currentStaff || !photoData) {
+                showMessage('error', '❌ Take a photo first!');
+                return;
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+            const onBreak = breakRecords.find(b => 
+                b.staffId === currentStaff.id && 
+                b.breakStart.startsWith(today) && 
+                !b.breakEnd
+            );
+
+            if (onBreak) {
+                const now = new Date();
+                onBreak.breakEnd = now.toISOString();
+                onBreak.endPhoto = photoData;
+                const duration = Math.floor((now - new Date(onBreak.breakStart)) / 60000);
+                
+                const clockRecord = clockRecords.find(r => 
+                    r.staffId === currentStaff.id && 
+                    r.clockIn.startsWith(today) && 
+                    !r.clockOut
+                );
+                if (clockRecord) {
+                    clockRecord.totalBreakMinutes = (clockRecord.totalBreakMinutes || 0) + duration;
+                }
+                
+                saveData();
+                showMessage('success', `✅ BREAK ENDED!\n\n${duration} minutes`);
+                setTimeout(resetKiosk, 3500);
+            } else {
+                const clockRecord = clockRecords.find(r => 
+                    r.staffId === currentStaff.id && 
+                    r.clockIn.startsWith(today) && 
+                    !r.clockOut
+                );
+
+                if (!clockRecord) {
+                    showMessage('error', '❌ Clock in first!');
+                    return;
+                }
+
+                const now = new Date();
+                breakRecords.push({
+                    id: Date.now(),
+                    staffId: currentStaff.id,
+                    staffName: currentStaff.name,
+                    breakStart: now.toISOString(),
+                    breakEnd: null,
+                    startPhoto: photoData
+                });
+                
+                saveData();
+                showMessage('success', `☕ BREAK STARTED!\n\nRemember to end your break!`);
+                setTimeout(resetKiosk, 3500);
+            }
+        }
+
+        function showMessage(type, message) {
+            const className = type === 'success' ? 'alert-success' : type === 'warning' ? 'alert-warning' : 'alert-error';
+            document.getElementById('message').innerHTML = 
+                `<div class="alert ${className}" style="white-space: pre-line;">${message}</div>`;
+        }
+
+        function resetKiosk() {
+            currentStaff = null;
+            photoData = null;
+            document.getElementById('staffSelect').value = '';
+            document.getElementById('photoSection').classList.add('hidden');
+            document.getElementById('actionButtons').classList.add('hidden');
+            document.getElementById('message').innerHTML = '';
+            resetPhoto();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Portal</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #4A90E2, #FF69B4);
+            min-height: 100vh; padding: 20px;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
+        .header {
+            background: white; padding: 25px; border-radius: 15px;
+            margin-bottom: 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        .header h1 { color: #4A90E2; font-size: 32px; }
+        .card {
+            background: white; border-radius: 15px; padding: 25px;
+            margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .btn {
+            padding: 15px 30px; font-size: 18px; font-weight: 600;
+            border: none; border-radius: 10px; cursor: pointer;
+            width: 100%; margin: 10px 0; transition: all 0.3s;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-success { background: #48bb78; color: white; }
+        .btn-danger { background: #f56565; color: white; }
+        .btn-warning { background: #f39c12; color: white; }
+        .btn-primary { background: #4A90E2; color: white; }
+        .form-control {
+            width: 100%; padding: 12px; font-size: 16px;
+            border: 2px solid #ddd; border-radius: 8px;
+        }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; }
+        .hidden { display: none !important; }
+        .alert {
+            padding: 15px; border-radius: 10px; margin: 20px 0;
+            font-weight: 600; text-align: center;
+        }
+        .alert-success { background: #d4edda; color: #155724; border: 2px solid #48bb78; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 2px solid #f56565; }
+        .alert-warning { background: #fff3cd; color: #856404; border: 2px solid #f39c12; }
+        .alert-info { background: #d1ecf1; color: #0c5460; border: 2px solid #4A90E2; }
+        .stat-display {
+            text-align: center; padding: 30px;
+            background: linear-gradient(135deg, rgba(74,144,226,0.1), rgba(255,105,180,0.1));
+            border-radius: 15px; margin: 20px 0;
+        }
+        .stat-number { font-size: 72px; font-weight: 700; color: #4A90E2; }
+        video, #capturedPhoto {
+            border-radius: 10px; border: 3px solid #4A90E2;
+            max-width: 100%; width: 100%; margin: 15px 0; display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📞 Staff Portal</h1>
+            <p style="color: #666; font-size: 16px;">Macclesfield Day Nursery</p>
+            <p style="color: #4A90E2; font-size: 18px; font-weight: 600; margin-top: 10px;" id="staffNameDisplay"></p>
+        </div>
+
+        <div id="selectStaff" class="card">
+            <h2 style="color: #4A90E2; margin-bottom: 20px;">Select Your Profile</h2>
+            <select class="form-control" id="staffSelect" onchange="loadStaffData()">
+                <option value="">Choose your name...</option>
+            </select>
+        </div>
+
+        <div id="staffContent" class="hidden">
+            <div class="card">
+                <h3 style="color: #4A90E2; margin-bottom: 15px;">⚡ Quick Clock In/Out</h3>
+                <p style="color: #666; margin-bottom: 20px;">Take a photo to verify it's you</p>
+                
+                <video id="video" autoplay playsinline style="display: none;"></video>
+                <canvas id="canvas" style="display: none;"></canvas>
+                <img id="capturedPhoto" style="display: none;">
+                
+                <button class="btn btn-primary" id="startCameraBtn" onclick="startCamera()">📷 Start Camera</button>
+                <button class="btn btn-success hidden" id="captureBtn" onclick="capturePhoto()">📸 Take Photo</button>
+                <button class="btn btn-warning hidden" id="retakeBtn" onclick="retakePhoto()">🔄 Retake</button>
+
+                <div id="clockButtons" class="hidden">
+                    <button class="btn btn-success" onclick="clockIn()">✅ CLOCK IN</button>
+                    <button class="btn btn-danger" onclick="clockOut()">⏹️ CLOCK OUT</button>
+                    <button class="btn btn-warning" onclick="toggleBreak()">☕ BREAK</button>
+                </div>
+
+                <div id="clockMessage"></div>
+            </div>
+
+            <div class="card">
+                <h3 style="color: #4A90E2; margin-bottom: 15px;">📊 My Hours This Week</h3>
+                <div class="stat-display">
+                    <div class="stat-number" id="hoursWorked">0.0</div>
+                    <div style="font-size: 20px; color: #666; margin-top: 10px;">hours worked (breaks deducted)</div>
+                    <div style="margin-top: 20px; font-size: 18px; font-weight: 600;" id="overtimeStatus"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 style="color: #4A90E2; margin-bottom: 15px;">🏥 Report Absence</h3>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select class="form-control" id="absenceType">
+                        <option value="sick">🤒 Sick</option>
+                        <option value="holiday">🏖️ Holiday</option>
+                        <option value="emergency">🚨 Emergency</option>
+                        <option value="other">📋 Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" class="form-control" id="absenceDate">
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea class="form-control" id="absenceNotes" rows="3"></textarea>
+                </div>
+                <button class="btn btn-warning" onclick="reportAbsence()">📤 Submit Absence</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let staff = [];
+        let shifts = [];
+        let clockRecords = [];
+        let breakRecords = [];
+        let absences = [];
+        let settings = {
+            nurseryLat: 53.2574,
+            nurseryLng: -2.1258,
+            geoRadius: 50,
+            openingTime: '07:00',
+            closingTime: '18:30'
+        };
+        let currentStaff = null;
+        let photoData = null;
+        let videoStream = null;
+        let userLocation = null;
+
+        function init() {
+            loadData();
+            requestLocation();
+            
+            // Check if staff ID is in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const staffId = urlParams.get('staff');
+            
+            if (staffId) {
+                // Direct link - auto-select this staff member
+                console.log('📱 Direct link detected for staff ID:', staffId);
+                const staffMember = staff.find(s => s.id == staffId);
+                
+                if (staffMember) {
+                    console.log('✅ Staff found:', staffMember.name);
+                    currentStaff = staffMember;
+                    document.getElementById('selectStaff').classList.add('hidden');
+                    document.getElementById('staffContent').classList.remove('hidden');
+                    document.getElementById('staffNameDisplay').textContent = `Welcome, ${staffMember.name}!`;
+                    loadStaffDataDirect();
+                } else {
+                    console.log('❌ Staff ID not found:', staffId);
+                    showError('Staff member not found. Please contact your manager.');
+                    populateStaff();
+                }
+            } else {
+                // No staff ID in URL - show dropdown
+                populateStaff();
+            }
+        }
+
+        function showError(message) {
+            document.getElementById('selectStaff').innerHTML = `
+                <div class="alert alert-error">${message}</div>
+            `;
+        }
+
+        function loadData() {
+            const saved = localStorage.getItem('nurseryCompleteSystem');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    staff = data.staff || [];
+                    shifts = data.shifts || [];
+                    clockRecords = data.clockRecords || [];
+                    breakRecords = data.breakRecords || [];
+                    absences = data.absences || [];
+                    settings = {...settings, ...(data.settings || {})};
+                    console.log(`✅ Loaded: ${staff.length} staff members`);
+                } catch (e) {
+                    console.error('Load error:', e);
+                }
+            }
+        }
+
+        function saveData() {
+            const saved = localStorage.getItem('nurseryCompleteSystem');
+            let data = saved ? JSON.parse(saved) : {};
+            data.clockRecords = clockRecords;
+            data.breakRecords = breakRecords;
+            data.absences = absences;
+            data.lastSaved = new Date().toISOString();
+            localStorage.setItem('nurseryCompleteSystem', JSON.stringify(data));
+        }
+
+        function requestLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        console.log('✅ Location obtained');
+                    },
+                    error => console.log('⚠️ Location not available')
+                );
+            }
+        }
+
+        function checkLocationProximity() {
+            if (!userLocation) return { allowed: true, distance: 0 };
+            
+            const R = 6371000;
+            const dLat = (settings.nurseryLat - userLocation.lat) * Math.PI / 180;
+            const dLon = (settings.nurseryLng - userLocation.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(userLocation.lat * Math.PI / 180) * Math.cos(settings.nurseryLat * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c;
+            
+            return { allowed: distance <= settings.geoRadius, distance: Math.round(distance) };
+        }
+
+        function checkOpeningHours() {
+            const now = new Date();
+            const currentTime = now.toTimeString().slice(0, 5);
+            const allowed = currentTime >= settings.openingTime && currentTime <= settings.closingTime;
+            return { allowed: allowed, currentTime: currentTime };
+        }
+
+        function populateStaff() {
+            staff.sort((a, b) => a.name.localeCompare(b.name));
+            const select = document.getElementById('staffSelect');
+            select.innerHTML = '<option value="">Choose your name...</option>' +
+                staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        }
+
+        function loadStaffData() {
+            const staffId = parseInt(document.getElementById('staffSelect').value);
+            if (!staffId) {
+                document.getElementById('staffContent').classList.add('hidden');
+                return;
+            }
+
+            currentStaff = staff.find(s => s.id === staffId);
+            document.getElementById('staffContent').classList.remove('hidden');
+            document.getElementById('staffNameDisplay').textContent = `Welcome, ${currentStaff.name}!`;
+            loadStaffDataDirect();
+        }
+
+        function loadStaffDataDirect() {
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            
+            const records = clockRecords.filter(r => 
+                r.staffId === currentStaff.id && r.clockOut && new Date(r.clockIn) >= weekAgo
+            );
+            
+            let totalHours = 0;
+            let totalBreaks = 0;
+            records.forEach(r => {
+                const hours = (new Date(r.clockOut) - new Date(r.clockIn)) / (1000 * 60 * 60);
+                const breakMins = (r.totalBreakMinutes || 0) / 60;
+                totalHours += hours;
+                totalBreaks += breakMins;
+            });
+            
+            const actualHours = totalHours - totalBreaks;
+            document.getElementById('hoursWorked').textContent = actualHours.toFixed(1);
+            
+            const diff = actualHours - currentStaff.contractHours;
+            const statusColor = diff > 0 ? '#f56565' : diff < 0 ? '#f39c12' : '#48bb78';
+            const statusText = diff > 0 
+                ? `+${diff.toFixed(1)} hrs OVERTIME` 
+                : diff < 0 
+                ? `${diff.toFixed(1)} hrs under`
+                : 'On target ✅';
+            
+            document.getElementById('overtimeStatus').innerHTML = 
+                `<span style="color: ${statusColor};">${statusText}</span>`;
+            
+            document.getElementById('absenceDate').valueAsDate = new Date();
+            resetPhoto();
+        }
+
+        async function startCamera() {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'user', width: 640, height: 480 } 
+                });
+                const video = document.getElementById('video');
+                video.srcObject = videoStream;
+                await video.play();
+                video.style.display = 'block';
+                
+                document.getElementById('startCameraBtn').classList.add('hidden');
+                document.getElementById('captureBtn').classList.remove('hidden');
+                document.getElementById('capturedPhoto').style.display = 'none';
+            } catch (error) {
+                showClockMessage('error', '❌ Camera not available');
+            }
+        }
+
+        function capturePhoto() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            photoData = canvas.toDataURL('image/jpeg', 0.8);
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            
+            const photoImg = document.getElementById('capturedPhoto');
+            photoImg.src = photoData;
+            photoImg.style.display = 'block';
+            video.style.display = 'none';
+            
+            document.getElementById('captureBtn').classList.add('hidden');
+            document.getElementById('retakeBtn').classList.remove('hidden');
+            document.getElementById('clockButtons').classList.remove('hidden');
+            
+            showClockMessage('success', '✅ Photo captured! Choose action below');
+        }
+
+        function retakePhoto() {
+            resetPhoto();
+            startCamera();
+        }
+
+        function resetPhoto() {
+            photoData = null;
+            document.getElementById('video').style.display = 'none';
+            document.getElementById('capturedPhoto').style.display = 'none';
+            document.getElementById('startCameraBtn').classList.remove('hidden');
+            document.getElementById('captureBtn').classList.add('hidden');
+            document.getElementById('retakeBtn').classList.add('hidden');
+            document.getElementById('clockButtons').classList.add('hidden');
+            document.getElementById('clockMessage').innerHTML = '';
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+        }
+
+        function clockIn() {
+            if (!photoData) { showClockMessage('error', '❌ Take photo first!'); return; }
+
+            // CHECK OPENING HOURS
+            const timeCheck = checkOpeningHours();
+            if (!timeCheck.allowed) {
+                showClockMessage('error', `❌ NURSERY IS CLOSED!\n\nCurrent time: ${timeCheck.currentTime}\nOpening hours: ${settings.openingTime} - ${settings.closingTime}`);
+                setTimeout(resetPhoto, 5000);
+                return;
+            }
+
+            // CHECK GEO-FENCING
+            const locationCheck = checkLocationProximity();
+            if (!locationCheck.allowed && userLocation) {
+                showClockMessage('error', `❌ TOO FAR FROM NURSERY!\n\nDistance: ${locationCheck.distance}m\nLimit: ${settings.geoRadius}m\n\nPlease come to the nursery to clock in.`);
+                setTimeout(resetPhoto, 5000);
+                return;
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+            const alreadyIn = clockRecords.find(r => 
+                r.staffId === currentStaff.id && r.clockIn.startsWith(today) && !r.clockOut
+            );
+
+            if (alreadyIn) {
+                showClockMessage('error', '❌ Already clocked in at ' + new Date(alreadyIn.clockIn).toLocaleTimeString('en-GB'));
+                return;
+            }
+
+            clockRecords.push({
+                id: Date.now(), staffId: currentStaff.id, staffName: currentStaff.name,
+                clockIn: new Date().toISOString(), clockOut: null, photo: photoData,
+                location: userLocation, totalBreakMinutes: 0, method: 'mobile'
+            });
+
+            saveData();
+            showClockMessage('success', '✅ Clocked in successfully!');
+            setTimeout(() => { resetPhoto(); loadStaffDataDirect(); }, 3000);
+        }
+
+        function clockOut() {
+            if (!photoData) { showClockMessage('error', '❌ Take photo first!'); return; }
+
+            const today = new Date().toISOString().split('T')[0];
+            const activeRecord = clockRecords.find(r => 
+                r.staffId === currentStaff.id && r.clockIn.startsWith(today) && !r.clockOut
+            );
+
+            if (!activeRecord) {
+                showClockMessage('error', '❌ No active clock-in. Please clock in first.');
+                return;
+            }
+
+            const now = new Date();
+            activeRecord.clockOut = now.toISOString();
+            activeRecord.clockOutPhoto = photoData;
+            
+            const hours = ((now - new Date(activeRecord.clockIn)) / (1000 * 60 * 60) - (activeRecord.totalBreakMinutes || 0) / 60).toFixed(1);
+            
+            saveData();
+            showClockMessage('success', `✅ Clocked out! You worked ${hours} hours today`);
+            setTimeout(() => { resetPhoto(); loadStaffDataDirect(); }, 3000);
+        }
+
+        function toggleBreak() {
+            if (!photoData) { showClockMessage('error', '❌ Take photo first!'); return; }
+
+            const today = new Date().toISOString().split('T')[0];
+            const onBreak = breakRecords.find(b => 
+                b.staffId === currentStaff.id && b.breakStart.startsWith(today) && !b.breakEnd
+            );
+
+            if (onBreak) {
+                const now = new Date();
+                onBreak.breakEnd = now.toISOString();
+                onBreak.endPhoto = photoData;
+                const duration = Math.floor((now - new Date(onBreak.breakStart)) / 60000);
+                
+                const clockRecord = clockRecords.find(r => 
+                    r.staffId === currentStaff.id && r.clockIn.startsWith(today) && !r.clockOut
+                );
+                if (clockRecord) clockRecord.totalBreakMinutes = (clockRecord.totalBreakMinutes || 0) + duration;
+                
+                saveData();
+                showClockMessage('success', `✅ Break ended! Duration: ${duration} minutes`);
+                setTimeout(resetPhoto, 3000);
+            } else {
+                const clockRecord = clockRecords.find(r => 
+                    r.staffId === currentStaff.id && r.clockIn.startsWith(today) && !r.clockOut
+                );
+                if (!clockRecord) { showClockMessage('error', '❌ Please clock in first!'); return; }
+
+                breakRecords.push({
+                    id: Date.now(), staffId: currentStaff.id, staffName: currentStaff.name,
+                    breakStart: new Date().toISOString(), breakEnd: null, startPhoto: photoData
+                });
+                
+                saveData();
+                showClockMessage('success', '☕ Break started! Remember to end it when done');
+                setTimeout(resetPhoto, 3000);
+            }
+        }
+
+        function showClockMessage(type, message) {
+            const className = type === 'success' ? 'alert-success' : type === 'warning' ? 'alert-warning' : 'alert-error';
+            document.getElementById('clockMessage').innerHTML = 
+                `<div class="alert ${className}" style="white-space: pre-line;">${message}</div>`;
+        }
+
+        function reportAbsence() {
+            if (!currentStaff) return;
+            const type = document.getElementById('absenceType').value;
+            const date = document.getElementById('absenceDate').value;
+            const notes = document.getElementById('absenceNotes').value.trim();
+            if (!date) { alert('❌ Please select a date'); return; }
+
+            absences.push({
+                id: Date.now(), staffId: currentStaff.id, staffName: currentStaff.name,
+                type, date, notes, reportedAt: new Date().toISOString()
+            });
+
+            saveData();
+            document.getElementById('absenceNotes').value = '';
+            alert('✅ Absence reported to management!');
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
