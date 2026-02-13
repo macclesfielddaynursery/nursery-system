@@ -24,6 +24,11 @@
             width: 100%; padding: 20px; font-size: 24px;
             border: 3px solid #ddd; border-radius: 10px; margin-bottom: 30px;
         }
+        .pin-input {
+            width: 100%; padding: 25px; font-size: 32px; text-align: center;
+            border: 3px solid #4A90E2; border-radius: 10px; margin: 20px 0;
+            letter-spacing: 10px; font-weight: 700;
+        }
         .btn {
             padding: 25px 50px; font-size: 28px; font-weight: 700;
             border: none; border-radius: 15px; cursor: pointer;
@@ -74,6 +79,12 @@
             </div>
         </div>
 
+        <div id="pinSection" class="hidden">
+            <p style="font-size: 26px; margin: 20px 0; color: #333; font-weight: 700;">🔐 Enter Your 4-Digit PIN</p>
+            <input type="password" class="pin-input" id="pinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••">
+            <button class="btn btn-success" onclick="verifyPIN()" style="width: 80%; font-size: 32px;">✓ VERIFY PIN</button>
+        </div>
+
         <div id="actionButtons" class="hidden" style="margin-top: 40px;">
             <button class="btn btn-success" onclick="clockIn()">✅ CLOCK IN</button>
             <button class="btn btn-danger" onclick="clockOut()">⏹️ CLOCK OUT</button>
@@ -98,6 +109,7 @@
         let photoData = null;
         let videoStream = null;
         let userLocation = null;
+        let pendingAction = null; // 'clockIn', 'clockOut', 'breakStart', 'breakEnd'
 
         function init() {
             loadData();
@@ -144,23 +156,17 @@
                             lat: position.coords.latitude,
                             lng: position.coords.longitude
                         };
-                        console.log('✅ Location obtained:', userLocation);
+                        console.log('✅ Location obtained');
                     },
-                    error => {
-                        console.log('⚠️ Location not available - geo-fencing disabled');
-                        showMessage('warning', '⚠️ LOCATION SERVICES DISABLED\n\nGeo-fencing not active. Please enable location services for full security.');
-                    }
+                    error => console.log('⚠️ Location not available')
                 );
             }
         }
 
         function checkLocationProximity() {
-            if (!userLocation) {
-                console.log('⚠️ No location - allowing clock in');
-                return { allowed: true, distance: 0 };
-            }
+            if (!userLocation) return { allowed: true, distance: 0 };
             
-            const R = 6371000; // Earth radius in meters
+            const R = 6371000;
             const dLat = (settings.nurseryLat - userLocation.lat) * Math.PI / 180;
             const dLon = (settings.nurseryLng - userLocation.lng) * Math.PI / 180;
             const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -169,19 +175,13 @@
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             const distance = R * c;
             
-            const allowed = distance <= settings.geoRadius;
-            console.log(`📍 Distance check: ${Math.round(distance)}m (limit: ${settings.geoRadius}m) - ${allowed ? 'ALLOWED' : 'BLOCKED'}`);
-            
-            return { allowed: allowed, distance: Math.round(distance) };
+            return { allowed: distance <= settings.geoRadius, distance: Math.round(distance) };
         }
 
         function checkOpeningHours() {
             const now = new Date();
             const currentTime = now.toTimeString().slice(0, 5);
             const allowed = currentTime >= settings.openingTime && currentTime <= settings.closingTime;
-            
-            console.log(`🕐 Time check: ${currentTime} (open: ${settings.openingTime}-${settings.closingTime}) - ${allowed ? 'ALLOWED' : 'BLOCKED'}`);
-            
             return { allowed: allowed, currentTime: currentTime };
         }
 
@@ -197,12 +197,14 @@
             if (staffId) {
                 currentStaff = staff.find(s => s.id === staffId);
                 document.getElementById('photoSection').classList.remove('hidden');
+                document.getElementById('pinSection').classList.add('hidden');
                 document.getElementById('actionButtons').classList.add('hidden');
                 document.getElementById('message').innerHTML = '';
                 resetPhoto();
             } else {
                 currentStaff = null;
                 document.getElementById('photoSection').classList.add('hidden');
+                document.getElementById('pinSection').classList.add('hidden');
                 document.getElementById('actionButtons').classList.add('hidden');
             }
         }
@@ -257,29 +259,62 @@
             
             document.getElementById('captureBtn').classList.add('hidden');
             document.getElementById('retakeBtn').classList.remove('hidden');
-            document.getElementById('actionButtons').classList.remove('hidden');
             
-            showMessage('success', '✅ Photo Captured!\n\nChoose your action below');
+            // Show PIN section instead of action buttons
+            document.getElementById('pinSection').classList.remove('hidden');
+            document.getElementById('pinInput').value = '';
+            document.getElementById('pinInput').focus();
+            
+            showMessage('success', '✅ Photo Captured!\n\nNow enter your PIN');
         }
 
         function retakePhoto() {
+            document.getElementById('pinSection').classList.add('hidden');
             resetPhoto();
             startCamera();
         }
 
         function resetPhoto() {
             photoData = null;
+            pendingAction = null;
             document.getElementById('video').style.display = 'none';
             document.getElementById('capturedPhoto').style.display = 'none';
             document.getElementById('startCameraBtn').classList.remove('hidden');
             document.getElementById('captureBtn').classList.add('hidden');
             document.getElementById('retakeBtn').classList.add('hidden');
             document.getElementById('actionButtons').classList.add('hidden');
+            document.getElementById('pinSection').classList.add('hidden');
             
             if (videoStream) {
                 videoStream.getTracks().forEach(track => track.stop());
                 videoStream = null;
             }
+        }
+
+        function verifyPIN() {
+            const enteredPIN = document.getElementById('pinInput').value.trim();
+            
+            if (enteredPIN.length !== 4) {
+                showMessage('error', '❌ PIN must be 4 digits!');
+                document.getElementById('pinInput').value = '';
+                document.getElementById('pinInput').focus();
+                return;
+            }
+
+            if (enteredPIN !== currentStaff.pin) {
+                showMessage('error', '❌ INCORRECT PIN!\n\nAccess Denied');
+                document.getElementById('pinInput').value = '';
+                document.getElementById('pinInput').focus();
+                setTimeout(() => {
+                    showMessage('error', '❌ Wrong PIN - try again or select different name');
+                }, 2000);
+                return;
+            }
+
+            // PIN is correct - show action buttons
+            document.getElementById('pinSection').classList.add('hidden');
+            document.getElementById('actionButtons').classList.remove('hidden');
+            showMessage('success', '✅ PIN Verified!\n\nChoose your action');
         }
 
         function clockIn() {
@@ -291,7 +326,7 @@
             // CHECK OPENING HOURS
             const timeCheck = checkOpeningHours();
             if (!timeCheck.allowed) {
-                showMessage('error', `❌ NURSERY IS CLOSED!\n\nCurrent time: ${timeCheck.currentTime}\nOpening hours: ${settings.openingTime} - ${settings.closingTime}\n\nYou cannot clock in outside nursery hours.`);
+                showMessage('error', `❌ NURSERY IS CLOSED!\n\nCurrent time: ${timeCheck.currentTime}\nOpening hours: ${settings.openingTime} - ${settings.closingTime}`);
                 setTimeout(resetKiosk, 6000);
                 return;
             }
@@ -299,7 +334,7 @@
             // CHECK GEO-FENCING
             const locationCheck = checkLocationProximity();
             if (!locationCheck.allowed && userLocation) {
-                showMessage('error', `❌ TOO FAR FROM NURSERY!\n\nYou are ${locationCheck.distance} meters away\nYou must be within ${settings.geoRadius} meters\n\nPlease come to the nursery to clock in.`);
+                showMessage('error', `❌ TOO FAR FROM NURSERY!\n\n${locationCheck.distance}m away\nMust be within ${settings.geoRadius}m`);
                 setTimeout(resetKiosk, 6000);
                 return;
             }
@@ -326,9 +361,11 @@
                 clockIn: now,
                 clockOut: null,
                 photo: photoData,
+                photoTimestamp: now,
                 location: userLocation,
                 totalBreakMinutes: 0,
-                method: 'kiosk'
+                method: 'kiosk',
+                pinVerified: true
             });
 
             saveData();
@@ -358,6 +395,8 @@
             const now = new Date();
             activeRecord.clockOut = now.toISOString();
             activeRecord.clockOutPhoto = photoData;
+            activeRecord.clockOutPhotoTimestamp = now.toISOString();
+            activeRecord.clockOutPinVerified = true;
             
             const workHours = (now - new Date(activeRecord.clockIn)) / (1000 * 60 * 60);
             const breakHours = (activeRecord.totalBreakMinutes || 0) / 60;
@@ -385,6 +424,8 @@
                 const now = new Date();
                 onBreak.breakEnd = now.toISOString();
                 onBreak.endPhoto = photoData;
+                onBreak.endPhotoTimestamp = now.toISOString();
+                onBreak.endPinVerified = true;
                 const duration = Math.floor((now - new Date(onBreak.breakStart)) / 60000);
                 
                 const clockRecord = clockRecords.find(r => 
@@ -418,7 +459,9 @@
                     staffName: currentStaff.name,
                     breakStart: now.toISOString(),
                     breakEnd: null,
-                    startPhoto: photoData
+                    startPhoto: photoData,
+                    startPhotoTimestamp: now.toISOString(),
+                    startPinVerified: true
                 });
                 
                 saveData();
@@ -436,12 +479,26 @@
         function resetKiosk() {
             currentStaff = null;
             photoData = null;
+            pendingAction = null;
             document.getElementById('staffSelect').value = '';
             document.getElementById('photoSection').classList.add('hidden');
+            document.getElementById('pinSection').classList.add('hidden');
             document.getElementById('actionButtons').classList.add('hidden');
             document.getElementById('message').innerHTML = '';
             resetPhoto();
         }
+
+        // Allow Enter key to submit PIN
+        document.addEventListener('DOMContentLoaded', function() {
+            const pinInput = document.getElementById('pinInput');
+            if (pinInput) {
+                pinInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        verifyPIN();
+                    }
+                });
+            }
+        });
 
         window.onload = init;
     </script>
